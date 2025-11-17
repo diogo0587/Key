@@ -1,4 +1,4 @@
-name: Auto-PWA-Builder-and-Deploy
+name: Build-and-Deploy-KeyMonitor-PWA
 
 on:
   push:
@@ -6,8 +6,13 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
-  build_and_deploy:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,97 +24,159 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install Vercel CLI
-        run: npm install -g vercel@latest
-
-      - name: Create PWA structure
+      - name: Criar arquivos do web app (local key monitor)
         run: |
-          mkdir -p src
+          set -e
+
           mkdir -p public/icons
+          mkdir -p src
 
           cat > src/index.html << 'HTML'
-          <!DOCTYPE html>
-          <html lang="pt-BR">
-          <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>PWA Automático</title>
-            <link rel="manifest" href="/manifest.json" />
-            <script>
-              if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/service-worker.js');
-              }
-            </script>
-          </head>
-          <body>
-            <h1>PWA gerado automaticamente</h1>
-          </body>
-          </html>
-          HTML
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Keyboard Monitor — Web App</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#111111" />
+</head>
+<body>
+  <header><h1>Keyboard Monitor</h1><p>Captura local de teclas — estudo puro.</p></header>
+
+  <main>
+    <section class="panel">
+      <textarea id="area" placeholder="Digite aqui..."></textarea>
+      <div class="controls">
+        <button id="start">Iniciar</button>
+        <button id="stop" disabled>Parar</button>
+        <button id="clear">Limpar</button>
+        <button id="export">Exportar CSV</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Últimos eventos</h2>
+      <div class="log" id="log"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Análise</h2>
+      <pre id="stats">Nenhuma captura.</pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js')
+    }
+  </script>
+</body>
+</html>
+HTML
+
+          cat > src/style.css << 'CSS'
+body{font-family:Arial,Helvetica,sans-serif;background:#f5f5f5;margin:0}
+header{background:#111;color:#fff;padding:18px;text-align:center}
+main{max-width:900px;margin:20px auto;padding:0 20px}
+.panel{background:#fff;padding:18px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px}
+textarea{width:100%;height:140px;padding:10px;font-size:16px;resize:vertical}
+.controls{margin-top:12px}
+button{padding:8px 12px;margin-right:8px;border:0;background:#333;color:#fff;border-radius:6px;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.log{height:200px;overflow:auto;background:#fafafa;border:1px solid #e9e9e9;padding:12px;border-radius:6px}
+CSS
+
+          cat > src/app.js << 'JS'
+let running = false;
+let events = [];
+
+const area = document.getElementById("area");
+const logDiv = document.getElementById("log");
+const stats = document.getElementById("stats");
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const clearBtn = document.getElementById("clear");
+const exportBtn = document.getElementById("export");
+
+function renderLog(){
+  logDiv.innerHTML = events.slice(-50).map(e=>`[${new Date(e.time).toLocaleTimeString()}] ${e.key} (${e.code})`).join("<br/>");
+}
+function updateStats(){
+  if(events.length===0){ stats.textContent="Nenhuma captura."; return; }
+  const first = events[0].time, last = events[events.length-1].time;
+  const duration = (last-first)/1000 || 1;
+  const intervals = [];
+  for(let i=1;i<events.length;i++) intervals.push(events[i].time-events[i-1].time);
+  const avgInterval = intervals.length ? (intervals.reduce((a,b)=>a+b,0)/intervals.length).toFixed(2) : 0;
+  stats.textContent = `Total: ${events.length}
+Duração: ${duration.toFixed(2)}s
+Teclas/s: ${(events.length/duration).toFixed(2)}
+Intervalo médio: ${avgInterval} ms
+Últimas: ${events.slice(-20).map(e=>e.key).join(" ")}`;
+}
+
+function onKey(e){
+  if(!running) return;
+  events.push({ key: e.key, code: e.code, time: Date.now() });
+  renderLog();
+  updateStats();
+}
+
+startBtn.onclick = ()=>{ running=true; events=[]; startBtn.disabled=true; stopBtn.disabled=false; area.focus(); };
+stopBtn.onclick = ()=>{ running=false; startBtn.disabled=false; stopBtn.disabled=true; };
+clearBtn.onclick = ()=>{ events=[]; logDiv.innerHTML=''; stats.textContent='Limpo.'; area.value=''; };
+exportBtn.onclick = ()=>{
+  if(!events.length){ alert('Nada para exportar'); return; }
+  let csv = "key,code,timestamp\n"+events.map(e=>`${JSON.stringify(e.key)},${e.code},${e.time}`).join("\n");
+  const blob = new Blob([csv],{type:'text/csv'}); const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='keyboard_data.csv'; a.click(); URL.revokeObjectURL(url);
+};
+
+area.addEventListener('keydown', onKey);
+JS
+
+          cat > public/manifest.json << 'JSON'
+{
+  "name": "Keyboard Monitor",
+  "short_name": "KeyMon",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "icons":[
+    {"src":"icons/icon-192.png","sizes":"192x192","type":"image/png"},
+    {"src":"icons/icon-512.png","sizes":"512x512","type":"image/png"}
+  ]
+}
+JSON
 
           cat > public/service-worker.js << 'SW'
-          self.addEventListener('install', event => {
-            console.log('SW instalado');
-            self.skipWaiting();
-          });
+self.addEventListener('install', evt => {
+  evt.waitUntil(
+    caches.open('keymon-cache').then(c => c.addAll([
+      './','./index.html','./style.css','./app.js','./manifest.json',
+      './icons/icon-192.png','./icons/icon-512.png'
+    ]))
+  )
+});
+self.addEventListener('fetch', evt => {
+  evt.respondWith(caches.match(evt.request).then(r=>r||fetch(evt.request)));
+});
+SW
 
-          self.addEventListener('activate', event => {
-            console.log('SW ativo');
-          });
-
-          self.addEventListener('fetch', event => {
-            event.respondWith(fetch(event.request));
-          });
-          SW
-
-          cat > public/manifest.json << 'MANIFEST'
-          {
-            "name": "PWA Automático",
-            "short_name": "AutoPWA",
-            "start_url": "/",
-            "display": "standalone",
-            "background_color": "#ffffff",
-            "theme_color": "#222222",
-            "icons": [
-              {
-                "src": "/icons/icon-192.png",
-                "sizes": "192x192",
-                "type": "image/png"
-              },
-              {
-                "src": "/icons/icon-512.png",
-                "sizes": "512x512",
-                "type": "image/png"
-              }
-            ]
-          }
-          MANIFEST
-
-          # ───────────────────────────────────────────────
-          # Ícones base64 USANDO MULTILINE REAL (sem erro)
-          # ───────────────────────────────────────────────
-
-          # Ícone 192
-          cat > public/icons/icon-192.png.b64 << 'B64_192'
-iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAQAAABH5Dq2AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6
-JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAA90lEQVR4nO3UsQ2DQBBE0W9KuWQECsQk
-S5GIErkCkSqECiELOJgsbR/dbOeGeq/QAdctkziZAAAAAAAAAAAAAAAAAACAyxs7Wm8TzBsuIcBzjKzn
-rS8Py2xgAU8zx/4InENcybXUG6uBgnKJfcE94Jxjn1cwXP3v4P3T6PxPzu6pfq+P/AAAAAAAAAAAAAAAA
-AAAAAAAAAAAAgH8BDnU3oL4xy+EAAAAASUVORK5CYII=
-B64_192
-
-          # Ícone 512
-          cat > public/icons/icon-512.png.b64 << 'B64_512'
-iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAQAAADoGO8FAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6
-JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAA/klEQVR4nO3SQQnDMBQEwY0tSsxgQwRa
-CxGTFjZgQwyEWSCyEckl5cZZpWpv+LyWcePvXIbb4EhPvG5AAAAAAAAAAAAAAAAAAAAAAAD4czlb+i0H
-uC8xwE5hXhmZ9+cOwCzEPmJh3O8PYdn4gmiV97ieYRe3HhVjYxfeG9w3xH+g+8t7sO+/O6p/r6f7AAAA
-AAAAAAAAAAAAAAAAAAAAAP4D/JINhLxHcxEAAAAASUVORK5CYII=
-B64_512
+          # Ícones simples e válidos
+          cat > public/icons/icon-192.png.b64 << 'B64'
+iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAAFUlEQVR4nO3BMQEAAADCoPVPbQ0PoAAAAAAAAAC4AAl2AAB0Qh8nAAAAAElFTkSuQmCC
+B64
+          cat > public/icons/icon-512.png.b64 << 'B64'
+iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAQAAABH5Dq2AAAAF0lEQVR4nO3BMQEAAADCoPVPbQ0PoAAAAAAAAAC4AAl2AAB0Qh8nAAAAAElFTkSuQmCC
+B64
 
           base64 --decode public/icons/icon-192.png.b64 > public/icons/icon-192.png
           base64 --decode public/icons/icon-512.png.b64 > public/icons/icon-512.png
-
           rm public/icons/*.b64
 
       - name: Build dist
@@ -118,8 +185,19 @@ B64_512
           cp -R src/* dist/
           cp -R public/* dist/
 
-      - name: Vercel Pull
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
 
-      - name: Deploy to Vercel
-        run: vercel deploy dist --prod --yes --token=${{ secrets.VERCEL_TOKEN }} --scope=${{ secrets.VERCEL_SCOPE }}
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
