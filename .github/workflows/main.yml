@@ -1,4 +1,4 @@
-name: Deploy PWA
+name: Deploy V2
 
 on:
   push:
@@ -23,59 +23,92 @@ jobs:
           mkdir -p dist
           mkdir -p dist/icons
 
-      - name: index.html
+      - name: Criar index.html
         run: |
           echo '<!doctype html>' > dist/index.html
           echo '<html lang="pt-BR">' >> dist/index.html
           echo '<head>' >> dist/index.html
           echo '  <meta charset="utf-8">' >> dist/index.html
           echo '  <meta name="viewport" content="width=device-width,initial-scale=1">' >> dist/index.html
-          echo '  <title>Keyboard Monitor</title>' >> dist/index.html
+          echo '  <title>Keyboard Monitor V2</title>' >> dist/index.html
           echo '  <link rel="stylesheet" href="style.css">' >> dist/index.html
           echo '  <link rel="manifest" href="manifest.json">' >> dist/index.html
           echo '</head>' >> dist/index.html
           echo '<body>' >> dist/index.html
-          echo '  <h1>Keyboard Monitor</h1>' >> dist/index.html
-          echo '  <textarea id="area" placeholder="Digite aqui..."></textarea>' >> dist/index.html
-          echo '  <script src="app.js"></script>' >> dist/index.html
-          echo '  <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("service-worker.js");}</script>' >> dist/index.html
+          echo '<header>' >> dist/index.html
+          echo '  <h1>Keyboard Monitor V2</h1>' >> dist/index.html
+          echo '  <button id="toggle-dark">🌙</button>' >> dist/index.html
+          echo '</header>' >> dist/index.html
+          echo '<section id="live-log">' >> dist/index.html
+          echo '  <h2>Log em tempo real</h2>' >> dist/index.html
+          echo '  <pre id="log-box"></pre>' >> dist/index.html
+          echo '</section>' >> dist/index.html
+          echo '<section id="stats">' >> dist/index.html
+          echo '  <h2>Estatísticas</h2>' >> dist/index.html
+          echo '  <canvas id="chart"></canvas>' >> dist/index.html
+          echo '</section>' >> dist/index.html
+          echo '<section id="controls">' >> dist/index.html
+          echo '  <button id="export-json">Export JSON</button>' >> dist/index.html
+          echo '  <button id="export-csv">Export CSV</button>' >> dist/index.html
+          echo '  <button id="clear">Limpar Logs</button>' >> dist/index.html
+          echo '</section>' >> dist/index.html
+          echo '<textarea id="input-area" placeholder="Digite aqui para testar..."></textarea>' >> dist/index.html
+          echo '<script src="chart.js"></script>' >> dist/index.html
+          echo '<script src="app.js"></script>' >> dist/index.html
+          echo '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("service-worker.js");}</script>' >> dist/index.html
           echo '</body>' >> dist/index.html
           echo '</html>' >> dist/index.html
 
-      - name: style.css
+      - name: Criar style.css
         run: |
-          echo 'body { background:#eee; font-family:Arial; padding:20px; }' > dist/style.css
-          echo 'textarea { width:100%; height:200px; font-size:16px; }' >> dist/style.css
+          echo 'body{margin:0;background:#f3f3f3;color:#111;font-family:Arial;padding:20px;transition:background .3s,color .3s}' > dist/style.css
+          echo '.dark{background:#111;color:#eee}' >> dist/style.css
+          echo 'header{display:flex;justify-content:space-between;align-items:center}' >> dist/style.css
+          echo '#log-box{background:#000;color:#0f0;padding:10px;height:200px;overflow-y:auto}' >> dist/style.css
+          echo '#controls button{margin-right:10px;padding:8px 12px}' >> dist/style.css
+          echo 'textarea{width:100%;margin-top:20px;height:150px;font-size:16px}' >> dist/style.css
 
-      - name: app.js
+      - name: Criar app.js
         run: |
-          echo 'let events=[];' > dist/app.js
-          echo 'const area=document.getElementById("area");' >> dist/app.js
-          echo 'area.addEventListener("keydown",e=>{' >> dist/app.js
-          echo '  events.push({key:e.key,code:e.code,time:Date.now()});' >> dist/app.js
-          echo '});' >> dist/app.js
+          echo 'let logs = JSON.parse(localStorage.getItem("km_logs_v2") || "[]");' > dist/app.js
+          echo 'const input = document.getElementById("input-area");' >> dist/app.js
+          echo 'const logBox = document.getElementById("log-box");' >> dist/app.js
+          echo 'const ctx = document.getElementById("chart").getContext("2d");' >> dist/app.js
+          echo 'function save(){localStorage.setItem("km_logs_v2", JSON.stringify(logs));}' >> dist/app.js
+          echo 'function renderLog(){logBox.textContent = JSON.stringify(logs.slice(-40), null, 2);}' >> dist/app.js
+          echo 'function buildStats(){const f={};logs.forEach(l=>f[l.key]=(f[l.key]||0)+1);chart.data.labels=Object.keys(f);chart.data.datasets[0].data=Object.values(f);chart.update();}' >> dist/app.js
+          echo 'input.addEventListener("keydown",e=>{logs.push({key:e.key,code:e.code,time:Date.now()});save();renderLog();buildStats();});' >> dist/app.js
+          echo 'document.getElementById("clear").onclick=()=>{logs=[];save();renderLog();buildStats();};' >> dist/app.js
+          echo 'document.getElementById("export-json").onclick=()=>{const b=new Blob([JSON.stringify(logs,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="logs.json";a.click();};' >> dist/app.js
+          echo 'document.getElementById("export-csv").onclick=()=>{const h="key,code,time\n";const r=logs.map(l=>`${l.key},${l.code},${l.time}`).join("\n");const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="logs.csv";a.click();};' >> dist/app.js
+          echo 'document.getElementById("toggle-dark").onclick=()=>document.body.classList.toggle("dark");' >> dist/app.js
+          echo 'renderLog();' >> dist/app.js
 
-      - name: manifest.json
+      - name: Criar chart.js
+        run: |
+          echo 'class Chart{constructor(c,t){this.ctx=c;this.data=t.data;this.type=t.type;this.draw()}update(){this.draw()}draw(){const c=this.ctx,w=c.canvas.width,h=c.canvas.height,d=this.data.datasets[0].data,l=this.data.labels;c.clearRect(0,0,w,h);if(!d.length)return;const m=Math.max(...d),bw=w/d.length-10;c.fillStyle="#3a7";d.forEach((v,i)=>{const bh=(v/m)*(h-20);c.fillRect(i*(bw+10)+10,h-bh,bw,bh);c.fillText(l[i],i*(bw+10)+10,h-5)})}}' > dist/chart.js
+          echo 'var chart=new Chart(document.getElementById("chart").getContext("2d"),{type:"bar",data:{labels:[],datasets:[{data:[]}]}});' >> dist/chart.js
+
+      - name: Criar manifest.json
         run: |
           echo '{' > dist/manifest.json
-          echo '  "name": "Keyboard Monitor",' >> dist/manifest.json
-          echo '  "short_name": "KeyMon",' >> dist/manifest.json
-          echo '  "start_url": ".",' >> dist/manifest.json
+          echo '  "name": "Keyboard Monitor V2",' >> dist/manifest.json
+          echo '  "short_name": "KMV2",' >> dist/manifest.json
+          echo '  "start_url": ".", ' >> dist/manifest.json
           echo '  "display": "standalone",' >> dist/manifest.json
+          echo '  "background_color": "#111",' >> dist/manifest.json
+          echo '  "theme_color": "#111",' >> dist/manifest.json
           echo '  "icons": [' >> dist/manifest.json
           echo '    {"src": "icons/icon-192.png", "sizes": "192x192"},' >> dist/manifest.json
           echo '    {"src": "icons/icon-512.png", "sizes": "512x512"}' >> dist/manifest.json
           echo '  ]' >> dist/manifest.json
           echo '}' >> dist/manifest.json
 
-      - name: service-worker.js
+      - name: Criar service-worker.js
         run: |
-          echo 'self.addEventListener("install",e=>{' > dist/service-worker.js
-          echo '  e.waitUntil(caches.open("keymon-cache").then(c=>c.addAll(["./","./index.html","./style.css","./app.js","./manifest.json"])));' >> dist/service-worker.js
-          echo '});' >> dist/service-worker.js
-          echo 'self.addEventListener("fetch",e=>{' >> dist/service-worker.js
-          echo '  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));' >> dist/service-worker.js
-          echo '});' >> dist/service-worker.js
+          echo 'const c="kmv2-cache";const f=["./","./index.html","./style.css","./app.js","./chart.js","./manifest.json"];' > dist/service-worker.js
+          echo 'self.addEventListener("install",e=>{e.waitUntil(caches.open(c).then(x=>x.addAll(f)));});' >> dist/service-worker.js
+          echo 'self.addEventListener("fetch",e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));});' >> dist/service-worker.js
 
       - name: Criar ícones fake
         run: |
