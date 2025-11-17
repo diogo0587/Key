@@ -1,8 +1,10 @@
 name: Auto-generate & Deploy Advanced PWA
 
+
 permissions:
-  contents: write
-  id-token: write   # necessário para deploy-pages v4
+  contents: write        # necessário para alterar a branch Pages
+  id-token: write        # necessário para OIDC
+  pages: write           # necessário para deploy-pages v4
 
 on:
   push:
