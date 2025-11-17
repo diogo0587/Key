@@ -1,4 +1,4 @@
-name: Auto-generate & Deploy Advanced PWA
+name: Auto-generate & Deploy PWA Full Base64
 
 on:
   push:
@@ -10,12 +10,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Create full PWA with Admin
+      - name: Generate PWA + Admin + Base64 Icons
         run: |
           mkdir -p dist/public/icons
+
+          # Ícones embutidos em base64 (transparente)
+          ICON_192="iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAQAAAA=="
+          ICON_512="iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAQAAAA=="
+          echo $ICON_192 > dist/public/icons/icon-192.txt
+          echo $ICON_512 > dist/public/icons/icon-512.txt
 
           # index.html
           cat > dist/index.html <<'HTML'
@@ -30,8 +36,7 @@ jobs:
           </head>
           <body>
             <h1>PWA User App</h1>
-            <p>Digite algo, será registrado automaticamente:</p>
-            <input type="text" id="inputBox" placeholder="Digite aqui">
+            <input type="text" id="inputBox" placeholder="Digite algo">
             <ul id="logList"></ul>
           </body>
           </html>
@@ -46,9 +51,9 @@ jobs:
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Admin Dashboard</title>
             <style>
-              body { font-family: sans-serif; }
-              #logList li { margin-bottom: 4px; }
-              #filter { margin-bottom: 10px; }
+              body { font-family:sans-serif; }
+              #logList li { margin-bottom:4px; }
+              #filter { margin-bottom:10px; }
             </style>
             <script defer src="admin.js"></script>
           </head>
@@ -65,36 +70,33 @@ jobs:
           cat > dist/main.js <<'JS'
           const input = document.getElementById('inputBox');
           const logList = document.getElementById('logList');
-          const logs = JSON.parse(localStorage.getItem('userLogs') || '[]');
+          const logs = JSON.parse(localStorage.getItem('userLogs')||'[]');
           function addLog(text){ const li=document.createElement('li'); li.textContent=text; logList.appendChild(li); }
           logs.forEach(addLog);
-          input.addEventListener('input', e => {
-            const value = e.target.value;
-            if(!value) return;
-            logs.push(value);
-            localStorage.setItem('userLogs', JSON.stringify(logs));
-            addLog(value);
-            e.target.value='';
+          input.addEventListener('input',e=>{
+            const v=e.target.value; if(!v) return;
+            logs.push(v); localStorage.setItem('userLogs',JSON.stringify(logs));
+            addLog(v); e.target.value='';
           });
           JS
 
           # admin.js
           cat > dist/admin.js <<'JS'
-          const logList = document.getElementById('logList');
-          const countEl = document.getElementById('count');
-          const filterInput = document.getElementById('filter');
-          let logs = JSON.parse(localStorage.getItem('userLogs') || '[]');
-          function renderLogs(filter=''){
+          const logList=document.getElementById('logList');
+          const countEl=document.getElementById('count');
+          const filterInput=document.getElementById('filter');
+          let logs=JSON.parse(localStorage.getItem('userLogs')||'[]');
+          function renderLogs(f=''){
             logList.innerHTML='';
-            const filtered = logs.filter(l=>l.toLowerCase().includes(filter.toLowerCase()));
+            const filtered=logs.filter(l=>l.toLowerCase().includes(f.toLowerCase()));
             filtered.forEach(item=>{const li=document.createElement('li');li.textContent=item;logList.appendChild(li);});
             countEl.textContent=filtered.length;
           }
-          filterInput.addEventListener('input', e=>renderLogs(e.target.value));
+          filterInput.addEventListener('input',e=>renderLogs(e.target.value));
           renderLogs();
           JS
 
-          # manifest.json
+          # manifest.json com icons embutidos
           cat > dist/manifest.json <<'JSON'
           {
             "name": "PWA Auto Input Advanced",
@@ -104,16 +106,11 @@ jobs:
             "background_color": "#ffffff",
             "theme_color": "#317EFB",
             "icons": [
-              {"src": "/public/icons/icon-192.png","sizes": "192x192","type": "image/png"},
-              {"src": "/public/icons/icon-512.png","sizes": "512x512","type": "image/png"}
+              {"src": "data:image/png;base64,${ICON_192}","sizes":"192x192","type":"image/png"},
+              {"src": "data:image/png;base64,${ICON_512}","sizes":"512x512","type":"image/png"}
             ]
           }
           JSON
-
-          # dummy icons base64
-          for size in 192 512; do
-            echo "iVBORw0KGgoAAAANSUhEUgAA$(($size))AAABAAAAAAAAAAA=" | base64 --decode > dist/public/icons/icon-${size}.png
-          done
 
       - name: List dist folder
         run: ls -R dist
