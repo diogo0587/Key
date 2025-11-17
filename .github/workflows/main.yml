@@ -34,12 +34,17 @@ jobs:
           <head>
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>PWA Gerado Automático</title>
+            <title>PWA Automático</title>
             <link rel="manifest" href="/manifest.json" />
+            <script>
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/service-worker.js');
+              }
+            </script>
           </head>
           <body>
-            <h1>PWA criado automaticamente</h1>
-            <p>Deploy automático via GitHub Actions + Vercel</p>
+            <h1>PWA gerado automaticamente</h1>
+            <p>Files criados via GitHub Actions.</p>
           </body>
           </html>
           EOF
@@ -47,12 +52,16 @@ jobs:
           # service worker
           cat << 'EOF' > public/service-worker.js
           self.addEventListener('install', event => {
-            console.log('Service Worker instalado');
+            console.log('SW instalado');
             self.skipWaiting();
           });
 
           self.addEventListener('activate', event => {
-            console.log('Service Worker ativo');
+            console.log('SW ativo');
+          });
+
+          self.addEventListener('fetch', event => {
+            event.respondWith(fetch(event.request));
           });
           EOF
 
@@ -80,13 +89,28 @@ jobs:
           }
           EOF
 
-          # ícones base64
-          echo "Gerando ícones..."
-          base64_icon_192="iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAQAAAB..."
-          base64_icon_512="iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAQAAAB..."
+          # ÍCONE 192x192 EM BASE64
+          cat << 'EOF' > public/icons/icon-192.png.b64
+iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAQAAABH5Dq2AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6
+JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAA90lEQVR4nO3UsQ2DQBBE0W9KuWQECsQk
+S5GIErkCkSqECiELOJgsbR/dbOeGeq/QAdctkziZAAAAAAAAAAAAAAAAAACAyxs7Wm8TzBsuIcBzjKzn
+rS8Py2xgAU8zx/4InENcybXUG6uBgnKJfcE94Jxjn1cwXP3v4P3T6PxPzu6pfq+P/AAAAAAAAAAAAAAAA
+AAAAAAAAAAAAgH8BDnU3oL4xy+EAAAAASUVORK5CYII=
+EOF
 
-          echo "$base64_icon_192" | base64 --decode > public/icons/icon-192.png
-          echo "$base64_icon_512" | base64 --decode > public/icons/icon-512.png
+          # ÍCONE 512x512 EM BASE64
+          cat << 'EOF' > public/icons/icon-512.png.b64
+iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAQAAADoGO8FAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6
+JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAA/klEQVR4nO3SQQnDMBQEwY0tSsxgQwRa
+CxGTFjZgQwyEWSCyEckl5cZZpWpv+LyWcePvXIbb4EhPvG5AAAAAAAAAAAAAAAAAAAAAAAD4czlb+i0H
+uC8xwE5hXhmZ9+cOwCzEPmJh3O8PYdn4gmiV97ieYRe3HhVjYxfeG9w3xH+g+8t7sO+/O6p/r6f7AAAA
+AAAAAAAAAAAAAAAAAAAAAP4D/JINhLxHcxEAAAAASUVORK5CYII=
+EOF
+
+          # decodifica
+          base64 --decode public/icons/icon-192.png.b64 > public/icons/icon-192.png
+          base64 --decode public/icons/icon-512.png.b64 > public/icons/icon-512.png
+          rm public/icons/*.b64
 
       - name: Generate dist
         run: |
