@@ -1,4 +1,8 @@
-name: Auto-generate & Deploy PWA Full Base64
+name: Auto-generate & Deploy Advanced PWA
+
+permissions:
+  contents: write
+  id-token: write   # necessário para deploy-pages v4
 
 on:
   push:
@@ -10,18 +14,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Generate PWA + Admin + Base64 Icons
+      - name: Generate full PWA with Admin + Base64 Icons
         run: |
           mkdir -p dist/public/icons
 
-          # Ícones embutidos em base64 (transparente)
+          # Base64 icons (transparente)
           ICON_192="iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAQAAAA=="
           ICON_512="iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAQAAAA=="
-          echo $ICON_192 > dist/public/icons/icon-192.txt
-          echo $ICON_512 > dist/public/icons/icon-512.txt
 
           # index.html
           cat > dist/index.html <<'HTML'
@@ -73,31 +75,31 @@ jobs:
           const logs = JSON.parse(localStorage.getItem('userLogs')||'[]');
           function addLog(text){ const li=document.createElement('li'); li.textContent=text; logList.appendChild(li); }
           logs.forEach(addLog);
-          input.addEventListener('input',e=>{
-            const v=e.target.value; if(!v) return;
-            logs.push(v); localStorage.setItem('userLogs',JSON.stringify(logs));
+          input.addEventListener('input', e => {
+            const v = e.target.value; if(!v) return;
+            logs.push(v); localStorage.setItem('userLogs', JSON.stringify(logs));
             addLog(v); e.target.value='';
           });
           JS
 
           # admin.js
           cat > dist/admin.js <<'JS'
-          const logList=document.getElementById('logList');
-          const countEl=document.getElementById('count');
-          const filterInput=document.getElementById('filter');
-          let logs=JSON.parse(localStorage.getItem('userLogs')||'[]');
+          const logList = document.getElementById('logList');
+          const countEl = document.getElementById('count');
+          const filterInput = document.getElementById('filter');
+          let logs = JSON.parse(localStorage.getItem('userLogs')||'[]');
           function renderLogs(f=''){
             logList.innerHTML='';
-            const filtered=logs.filter(l=>l.toLowerCase().includes(f.toLowerCase()));
+            const filtered = logs.filter(l => l.toLowerCase().includes(f.toLowerCase()));
             filtered.forEach(item=>{const li=document.createElement('li');li.textContent=item;logList.appendChild(li);});
             countEl.textContent=filtered.length;
           }
-          filterInput.addEventListener('input',e=>renderLogs(e.target.value));
+          filterInput.addEventListener('input', e => renderLogs(e.target.value));
           renderLogs();
           JS
 
           # manifest.json com icons embutidos
-          cat > dist/manifest.json <<'JSON'
+          cat > dist/manifest.json <<JSON
           {
             "name": "PWA Auto Input Advanced",
             "short_name": "PWA Teste",
