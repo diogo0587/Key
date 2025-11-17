@@ -1,10 +1,9 @@
 name: Auto-generate & Deploy Advanced PWA
 
-
 permissions:
-  contents: write        # necessário para alterar a branch Pages
-  id-token: write        # necessário para OIDC
-  pages: write           # necessário para deploy-pages v4
+  contents: write
+  id-token: write
+  pages: write
 
 on:
   push:
@@ -23,7 +22,7 @@ jobs:
         run: |
           mkdir -p dist/public/icons
 
-          # Base64 icons (transparente)
+          # Base64 icons (transparent)
           ICON_192="iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAQAAAA=="
           ICON_512="iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAQAAAA=="
 
@@ -100,7 +99,7 @@ jobs:
           renderLogs();
           JS
 
-          # manifest.json com icons embutidos
+          # manifest.json
           cat > dist/manifest.json <<JSON
           {
             "name": "PWA Auto Input Advanced",
@@ -119,16 +118,10 @@ jobs:
       - name: List dist folder
         run: ls -R dist
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pwa-build
-          path: ./dist
-
       - name: Configure Pages
         uses: actions/configure-pages@v3
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
         with:
-          artifact_name: pwa-build
+          folder: ./dist
