@@ -1,131 +1,115 @@
-name: Deploy V2
+name: Auto-generate & Deploy PWA v4
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+    branches:
+      - main
 
 jobs:
-  build:
+  generate-build-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Criar diretórios
+      - name: Create PWA structure with base64 icons and auto input
         run: |
-          mkdir -p dist
-          mkdir -p dist/icons
+          mkdir -p src public/icons build
 
-      - name: Criar index.html
-        run: |
-          echo '<!doctype html>' > dist/index.html
-          echo '<html lang="pt-BR">' >> dist/index.html
-          echo '<head>' >> dist/index.html
-          echo '  <meta charset="utf-8">' >> dist/index.html
-          echo '  <meta name="viewport" content="width=device-width,initial-scale=1">' >> dist/index.html
-          echo '  <title>Keyboard Monitor V2</title>' >> dist/index.html
-          echo '  <link rel="stylesheet" href="style.css">' >> dist/index.html
-          echo '  <link rel="manifest" href="manifest.json">' >> dist/index.html
-          echo '</head>' >> dist/index.html
-          echo '<body>' >> dist/index.html
-          echo '<header>' >> dist/index.html
-          echo '  <h1>Keyboard Monitor V2</h1>' >> dist/index.html
-          echo '  <button id="toggle-dark">🌙</button>' >> dist/index.html
-          echo '</header>' >> dist/index.html
-          echo '<section id="live-log">' >> dist/index.html
-          echo '  <h2>Log em tempo real</h2>' >> dist/index.html
-          echo '  <pre id="log-box"></pre>' >> dist/index.html
-          echo '</section>' >> dist/index.html
-          echo '<section id="stats">' >> dist/index.html
-          echo '  <h2>Estatísticas</h2>' >> dist/index.html
-          echo '  <canvas id="chart"></canvas>' >> dist/index.html
-          echo '</section>' >> dist/index.html
-          echo '<section id="controls">' >> dist/index.html
-          echo '  <button id="export-json">Export JSON</button>' >> dist/index.html
-          echo '  <button id="export-csv">Export CSV</button>' >> dist/index.html
-          echo '  <button id="clear">Limpar Logs</button>' >> dist/index.html
-          echo '</section>' >> dist/index.html
-          echo '<textarea id="input-area" placeholder="Digite aqui para testar..."></textarea>' >> dist/index.html
-          echo '<script src="chart.js"></script>' >> dist/index.html
-          echo '<script src="app.js"></script>' >> dist/index.html
-          echo '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("service-worker.js");}</script>' >> dist/index.html
-          echo '</body>' >> dist/index.html
-          echo '</html>' >> dist/index.html
+          # Manifest
+          cat > public/manifest.json << 'EOF'
+          {
+            "name": "PWA Auto Input",
+            "short_name": "PWA Teste",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#ffffff",
+            "theme_color": "#317EFB",
+            "icons": [
+              {"src": "/icons/icon-192.png","sizes": "192x192","type": "image/png"},
+              {"src": "/icons/icon-512.png","sizes": "512x512","type": "image/png"}
+            ]
+          }
+          EOF
 
-      - name: Criar style.css
-        run: |
-          echo 'body{margin:0;background:#f3f3f3;color:#111;font-family:Arial;padding:20px;transition:background .3s,color .3s}' > dist/style.css
-          echo '.dark{background:#111;color:#eee}' >> dist/style.css
-          echo 'header{display:flex;justify-content:space-between;align-items:center}' >> dist/style.css
-          echo '#log-box{background:#000;color:#0f0;padding:10px;height:200px;overflow-y:auto}' >> dist/style.css
-          echo '#controls button{margin-right:10px;padding:8px 12px}' >> dist/style.css
-          echo 'textarea{width:100%;margin-top:20px;height:150px;font-size:16px}' >> dist/style.css
+          # HTML
+          cat > src/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="pt-BR">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>PWA Auto Input</title>
+            <link rel="manifest" href="/manifest.json">
+            <script defer src="main.js"></script>
+          </head>
+          <body>
+            <h1>PWA Auto Input</h1>
+            <p>Digite algo e veja armazenado automaticamente:</p>
+            <input type="text" id="inputBox" placeholder="Digite aqui">
+            <ul id="logList"></ul>
+          </body>
+          </html>
+          EOF
 
-      - name: Criar app.js
-        run: |
-          echo 'let logs = JSON.parse(localStorage.getItem("km_logs_v2") || "[]");' > dist/app.js
-          echo 'const input = document.getElementById("input-area");' >> dist/app.js
-          echo 'const logBox = document.getElementById("log-box");' >> dist/app.js
-          echo 'const ctx = document.getElementById("chart").getContext("2d");' >> dist/app.js
-          echo 'function save(){localStorage.setItem("km_logs_v2", JSON.stringify(logs));}' >> dist/app.js
-          echo 'function renderLog(){logBox.textContent = JSON.stringify(logs.slice(-40), null, 2);}' >> dist/app.js
-          echo 'function buildStats(){const f={};logs.forEach(l=>f[l.key]=(f[l.key]||0)+1);chart.data.labels=Object.keys(f);chart.data.datasets[0].data=Object.values(f);chart.update();}' >> dist/app.js
-          echo 'input.addEventListener("keydown",e=>{logs.push({key:e.key,code:e.code,time:Date.now()});save();renderLog();buildStats();});' >> dist/app.js
-          echo 'document.getElementById("clear").onclick=()=>{logs=[];save();renderLog();buildStats();};' >> dist/app.js
-          echo 'document.getElementById("export-json").onclick=()=>{const b=new Blob([JSON.stringify(logs,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="logs.json";a.click();};' >> dist/app.js
-          echo 'document.getElementById("export-csv").onclick=()=>{const h="key,code,time\n";const r=logs.map(l=>`${l.key},${l.code},${l.time}`).join("\n");const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="logs.csv";a.click();};' >> dist/app.js
-          echo 'document.getElementById("toggle-dark").onclick=()=>document.body.classList.toggle("dark");' >> dist/app.js
-          echo 'renderLog();' >> dist/app.js
+          # JS com registro automático
+          cat > src/main.js << 'EOF'
+          const input = document.getElementById('inputBox');
+          const logList = document.getElementById('logList');
+          const logs = JSON.parse(localStorage.getItem('keyLog') || '[]');
+          logs.forEach(item => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            logList.appendChild(li);
+          });
+          function addLog(text){
+            const li = document.createElement('li');
+            li.textContent = text;
+            logList.appendChild(li);
+          }
+          input.addEventListener('input', e => {
+            const value = e.target.value;
+            if(!value) return;
+            logs.push(value);
+            localStorage.setItem('keyLog', JSON.stringify(logs));
+            addLog(value);
+            e.target.value = '';
+          });
+          if('serviceWorker' in navigator){
+            window.addEventListener('load', ()=>navigator.serviceWorker.register('/service-worker.js'));
+          }
+          EOF
 
-      - name: Criar chart.js
-        run: |
-          echo 'class Chart{constructor(c,t){this.ctx=c;this.data=t.data;this.type=t.type;this.draw()}update(){this.draw()}draw(){const c=this.ctx,w=c.canvas.width,h=c.canvas.height,d=this.data.datasets[0].data,l=this.data.labels;c.clearRect(0,0,w,h);if(!d.length)return;const m=Math.max(...d),bw=w/d.length-10;c.fillStyle="#3a7";d.forEach((v,i)=>{const bh=(v/m)*(h-20);c.fillRect(i*(bw+10)+10,h-bh,bw,bh);c.fillText(l[i],i*(bw+10)+10,h-5)})}}' > dist/chart.js
-          echo 'var chart=new Chart(document.getElementById("chart").getContext("2d"),{type:"bar",data:{labels:[],datasets:[{data:[]}]}});' >> dist/chart.js
+          # Service Worker
+          cat > service-worker.js << 'EOF'
+          const cacheName='pwa-cache-v1';
+          const filesToCache=['/','/src/index.html','/src/main.js','/public/manifest.json'];
+          self.addEventListener('install', e=>e.waitUntil(caches.open(cacheName).then(c=>c.addAll(filesToCache))));
+          self.addEventListener('fetch', e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));
+          EOF
 
-      - name: Criar manifest.json
-        run: |
-          echo '{' > dist/manifest.json
-          echo '  "name": "Keyboard Monitor V2",' >> dist/manifest.json
-          echo '  "short_name": "KMV2",' >> dist/manifest.json
-          echo '  "start_url": ".", ' >> dist/manifest.json
-          echo '  "display": "standalone",' >> dist/manifest.json
-          echo '  "background_color": "#111",' >> dist/manifest.json
-          echo '  "theme_color": "#111",' >> dist/manifest.json
-          echo '  "icons": [' >> dist/manifest.json
-          echo '    {"src": "icons/icon-192.png", "sizes": "192x192"},' >> dist/manifest.json
-          echo '    {"src": "icons/icon-512.png", "sizes": "512x512"}' >> dist/manifest.json
-          echo '  ]' >> dist/manifest.json
-          echo '}' >> dist/manifest.json
+          # Ícones base64 (transparente PNG)
+          for size in 192 512; do
+            echo "iVBORw0KGgoAAAANSUhEUgAA$(($size))AAAB$RANDOM" | base64 --decode > public/icons/icon-${size}.png || echo "Use seus próprios ícones em public/icons/icon-${size}.png"
+          done
 
-      - name: Criar service-worker.js
-        run: |
-          echo 'const c="kmv2-cache";const f=["./","./index.html","./style.css","./app.js","./chart.js","./manifest.json"];' > dist/service-worker.js
-          echo 'self.addEventListener("install",e=>{e.waitUntil(caches.open(c).then(x=>x.addAll(f)));});' >> dist/service-worker.js
-          echo 'self.addEventListener("fetch",e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));});' >> dist/service-worker.js
+      - name: Build PWA
+        run: cp -r src/* build/
 
-      - name: Criar ícones fake
-        run: |
-          echo -n "" > dist/icons/icon-192.png
-          echo -n "" > dist/icons/icon-512.png
+      - name: List build folder
+        run: ls -R build
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-artifact@v3
         with:
-          path: dist
+          name: pwa-build
+          path: ./build
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
+      - name: Configure Pages
+        uses: actions/configure-pages@v3
 
-    steps:
-      - name: Deploy
+      - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
+        with:
+          folder: ./build
