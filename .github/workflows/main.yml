@@ -1,0 +1,238 @@
+name: FULL AUTO PWA + Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      # ============================================================
+      # GERAR ARQUIVOS DO PWA AUTOMATICAMENTE
+      # ============================================================
+      - name: Gerar estrutura do PWA
+        run: |
+          echo "Gerando PWA automaticamente..."
+
+          mkdir -p public/icons
+
+          # ------------------ index.html ------------------
+          cat > public/index.html << 'EOF'
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Keyboard Monitor — PWA</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111">
+</head>
+<body>
+
+  <header>
+    <h1>Keyboard Monitor PWA</h1>
+    <p>Captura transparente, local e offline.</p>
+  </header>
+
+  <main>
+    <textarea id="area" placeholder="Digite algo..."></textarea>
+
+    <div class="controls">
+      <button id="start">Iniciar</button>
+      <button id="stop" disabled>Parar</button>
+      <button id="clear">Limpar</button>
+      <button id="export">Exportar CSV</button>
+    </div>
+
+    <section class="panel">
+      <h3>Eventos</h3>
+      <div id="log" class="log"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Análise</h3>
+      <pre id="stats"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/service-worker.js");
+    }
+  </script>
+</body>
+</html>
+EOF
+
+          # ------------------ style.css ------------------
+          cat > public/style.css << 'EOF'
+body {
+  font-family: Arial, sans-serif;
+  background: #f3f3f3;
+  margin: 0;
+  padding: 0;
+}
+header {
+  background: #111; color: #fff; padding: 20px; text-align: center;
+}
+main {
+  max-width: 900px; margin: 20px auto; padding: 0 20px;
+}
+textarea {
+  width: 100%; height: 150px; padding: 10px; font-size: 16px;
+}
+.controls button {
+  margin: 10px 10px 10px 0; padding: 8px 16px; background: #111; color: #fff; border: none;
+}
+.log {
+  background: #fafafa; padding: 10px; height: 200px; overflow-y: auto; border: 1px solid #ddd;
+}
+.panel {
+  background: #fff; padding: 15px; margin-top: 20px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+EOF
+
+          # ------------------ app.js ------------------
+          cat > public/app.js << 'EOF'
+let running = false;
+let events = [];
+
+const area = document.getElementById("area");
+const logDiv = document.getElementById("log");
+const stats = document.getElementById("stats");
+
+function renderLog() {
+  logDiv.innerHTML = events.slice(-40).map(e =>
+    `[${new Date(e.time).toLocaleTimeString()}] ${e.key} (${e.code})`
+  ).join("\n");
+}
+
+function updateStats() {
+  if (events.length === 0) {
+    stats.textContent = "Nenhum dado.";
+    return;
+  }
+
+  const first = events[0].time;
+  const last = events[events.length - 1].time;
+  const duration = (last - first) / 1000;
+
+  const avg = duration > 0 ? (events.length / duration).toFixed(2) : 0;
+
+  stats.textContent =
+`Teclas capturadas: ${events.length}
+Tempo total: ${duration.toFixed(2)}s
+Teclas por segundo: ${avg}
+Últimas teclas: ${events.slice(-20).map(e=>e.key).join(" ")}`;
+}
+
+document.getElementById("start").onclick = () => {
+  running = true;
+  events = [];
+  area.focus();
+};
+
+document.getElementById("stop").onclick = () => running = false;
+
+document.getElementById("clear").onclick = () => {
+  events = [];
+  logDiv.textContent = "";
+  stats.textContent = "Limpo.";
+};
+
+document.getElementById("export").onclick = () => {
+  if (!events.length) return alert("Nada para exportar.");
+  let csv = "key,code,timestamp\n";
+  csv += events.map(e => `${e.key},${e.code},${e.time}`).join("\n");
+
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "keyboard_data.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+area.addEventListener("keydown", e => {
+  if (!running) return;
+  events.push({ key: e.key, code: e.code, time: Date.now() });
+  renderLog();
+  updateStats();
+});
+EOF
+
+          # ------------------ manifest.json ------------------
+          cat > public/manifest.json << 'EOF'
+{
+  "name": "Keyboard Monitor PWA",
+  "short_name": "KeyMon",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "theme_color": "#111",
+  "background_color": "#111",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+EOF
+
+          # ------------------ service-worker.js ------------------
+          cat > public/service-worker.js << 'EOF'
+const CACHE_NAME = "keymon-v1";
+const FILES = [
+  "/",
+  "/index.html",
+  "/style.css",
+  "/app.js",
+  "/manifest.json",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png"
+];
+
+self.addEventListener("install", e => {
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(FILES)));
+});
+
+self.addEventListener("fetch", e => {
+  e.respondWith(
+    caches.match(e.request).then(resp => resp || fetch(e.request))
+  );
+});
+EOF
+
+          # ------------------ ícones fake ------------------
+          convert -size 192x192 xc:black public/icons/icon-192.png
+          convert -size 512x512 xc:black public/icons/icon-512.png
+
+      # ============================================================
+      # DEPLOY NA VERCEL
+      # ============================================================
+      - name: Deploy PWA na Vercel
+        run: |
+          vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          vercel deploy public --prod --yes --token=${{ secrets.VERCEL_TOKEN }} --scope=${{ secrets.VERCEL_SCOPE }}
