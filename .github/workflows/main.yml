@@ -17,9 +17,7 @@ jobs:
         run: |
           mkdir -p dist/public/icons
 
-          ##############################################
-          # index.html - user app
-          ##############################################
+          # index.html
           cat > dist/index.html <<'HTML'
           <!doctype html>
           <html lang="pt-BR">
@@ -39,9 +37,7 @@ jobs:
           </html>
           HTML
 
-          ##############################################
-          # admin.html - admin dashboard
-          ##############################################
+          # admin.html
           cat > dist/admin.html <<'HTML'
           <!doctype html>
           <html lang="pt-BR">
@@ -65,18 +61,12 @@ jobs:
           </html>
           HTML
 
-          ##############################################
-          # main.js - user logic
-          ##############################################
+          # main.js
           cat > dist/main.js <<'JS'
           const input = document.getElementById('inputBox');
           const logList = document.getElementById('logList');
           const logs = JSON.parse(localStorage.getItem('userLogs') || '[]');
-          function addLog(text){
-            const li = document.createElement('li');
-            li.textContent = text;
-            logList.appendChild(li);
-          }
+          function addLog(text){ const li=document.createElement('li'); li.textContent=text; logList.appendChild(li); }
           logs.forEach(addLog);
           input.addEventListener('input', e => {
             const value = e.target.value;
@@ -88,36 +78,23 @@ jobs:
           });
           JS
 
-          ##############################################
-          # admin.js - admin logic with filter and count
-          ##############################################
+          # admin.js
           cat > dist/admin.js <<'JS'
           const logList = document.getElementById('logList');
           const countEl = document.getElementById('count');
           const filterInput = document.getElementById('filter');
           let logs = JSON.parse(localStorage.getItem('userLogs') || '[]');
-
           function renderLogs(filter=''){
             logList.innerHTML='';
             const filtered = logs.filter(l=>l.toLowerCase().includes(filter.toLowerCase()));
-            filtered.forEach(item => {
-              const li = document.createElement('li');
-              li.textContent=item;
-              logList.appendChild(li);
-            });
-            countEl.textContent = filtered.length;
+            filtered.forEach(item=>{const li=document.createElement('li');li.textContent=item;logList.appendChild(li);});
+            countEl.textContent=filtered.length;
           }
-
-          filterInput.addEventListener('input', e=>{
-            renderLogs(e.target.value);
-          });
-
+          filterInput.addEventListener('input', e=>renderLogs(e.target.value));
           renderLogs();
           JS
 
-          ##############################################
           # manifest.json
-          ##############################################
           cat > dist/manifest.json <<'JSON'
           {
             "name": "PWA Auto Input Advanced",
@@ -133,9 +110,7 @@ jobs:
           }
           JSON
 
-          ##############################################
-          # dummy icons in base64
-          ##############################################
+          # dummy icons base64
           for size in 192 512; do
             echo "iVBORw0KGgoAAAANSUhEUgAA$(($size))AAABAAAAAAAAAAA=" | base64 --decode > dist/public/icons/icon-${size}.png
           done
@@ -144,7 +119,7 @@ jobs:
         run: ls -R dist
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pwa-build
           path: ./dist
@@ -155,4 +130,4 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
         with:
-          folder: ./dist
+          artifact_name: pwa-build
