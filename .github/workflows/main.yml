@@ -1,118 +1,343 @@
-name: Auto-generate & Deploy PWA v4
+name: Auto PWA + Admin Generator
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
+  workflow_dispatch:
+
 permissions:
   id-token: write
   pages: write
   contents: read
+
 jobs:
   generate-build-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Create PWA structure with base64 icons and auto input
+      - name: Create dist with app + admin
         run: |
-          mkdir -p src public/icons build
+          set -e
+          rm -rf dist
+          mkdir -p dist/icons
 
-          # Manifest
-          cat > public/manifest.json << 'EOF'
-          {
-            "name": "PWA Auto Input",
-            "short_name": "PWA Teste",
-            "start_url": "/",
-            "display": "standalone",
-            "background_color": "#ffffff",
-            "theme_color": "#317EFB",
-            "icons": [
-              {"src": "/icons/icon-192.png","sizes": "192x192","type": "image/png"},
-              {"src": "/icons/icon-512.png","sizes": "512x512","type": "image/png"}
-            ]
-          }
-          EOF
+          ##############################################################################
+          # index.html - user app (records only local input into localStorage)
+          ##############################################################################
+          cat > dist/index.html <<'HTML'
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>KeyMonitor - User</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="manifest" href="/manifest.json"/>
+  <meta name="theme-color" content="#0f172a"/>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div class="max-w-4xl mx-auto p-6">
+    <header class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold">KeyMonitor — User</h1>
+      <a href="/admin.html" class="text-sm text-slate-600">Admin</a>
+    </header>
 
-          # HTML
-          cat > src/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html lang="pt-BR">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>PWA Auto Input</title>
-            <link rel="manifest" href="/manifest.json">
-            <script defer src="main.js"></script>
-          </head>
-          <body>
-            <h1>PWA Auto Input</h1>
-            <p>Digite algo e veja armazenado automaticamente:</p>
-            <input type="text" id="inputBox" placeholder="Digite aqui">
-            <ul id="logList"></ul>
-          </body>
-          </html>
-          EOF
+    <section class="mb-6">
+      <p class="mb-2 text-sm text-slate-500">Digite no campo abaixo — tudo fica apenas no seu navegador (localStorage).</p>
+      <input id="inputBox" class="w-full p-3 border rounded" placeholder="Digite aqui..." />
+    </section>
 
-          # JS com registro automático
-          cat > src/main.js << 'EOF'
-          const input = document.getElementById('inputBox');
-          const logList = document.getElementById('logList');
-          const logs = JSON.parse(localStorage.getItem('keyLog') || '[]');
-          logs.forEach(item => {
-            const li = document.createElement('li');
-            li.textContent = item;
-            logList.appendChild(li);
-          });
-          function addLog(text){
-            const li = document.createElement('li');
-            li.textContent = text;
-            logList.appendChild(li);
-          }
-          input.addEventListener('input', e => {
-            const value = e.target.value;
-            if(!value) return;
-            logs.push(value);
-            localStorage.setItem('keyLog', JSON.stringify(logs));
-            addLog(value);
-            e.target.value = '';
-          });
-          if('serviceWorker' in navigator){
-            window.addEventListener('load', ()=>navigator.serviceWorker.register('/service-worker.js'));
-          }
-          EOF
+    <section>
+      <h2 class="text-lg font-semibold mb-2">Últimos registros</h2>
+      <pre id="logList" class="bg-black text-green-400 p-3 h-48 overflow-auto rounded"></pre>
+      <div class="mt-3 flex gap-2">
+        <button id="exportJson" class="px-3 py-2 bg-blue-600 text-white rounded">Export JSON</button>
+        <button id="exportCsv" class="px-3 py-2 bg-emerald-600 text-white rounded">Export CSV</button>
+        <button id="clear" class="px-3 py-2 bg-red-600 text-white rounded">Limpar local</button>
+      </div>
+    </section>
+  </div>
 
-          # Service Worker
-          cat > service-worker.js << 'EOF'
-          const cacheName='pwa-cache-v1';
-          const filesToCache=['/','/src/index.html','/src/main.js','/public/manifest.json'];
-          self.addEventListener('install', e=>e.waitUntil(caches.open(cacheName).then(c=>c.addAll(filesToCache))));
-          self.addEventListener('fetch', e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));
-          EOF
+  <script src="/app.js"></script>
+</body>
+</html>
+HTML
 
-          # Ícones base64 (transparente PNG)
-          for size in 192 512; do
-            echo "iVBORw0KGgoAAAANSUhEUgAA$(($size))AAAB$RANDOM" | base64 --decode > public/icons/icon-${size}.png || echo "Use seus próprios ícones em public/icons/icon-${size}.png"
-          done
+          ##############################################################################
+          # admin.html - client-side admin UI (password protected in-session)
+          ##############################################################################
+          cat > dist/admin.html <<'HTML'
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>KeyMonitor - Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="manifest" href="/manifest.json"/>
+</head>
+<body class="bg-white min-h-screen">
+  <div class="max-w-5xl mx-auto p-6">
+    <header class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold">Admin — Painel (Local)</h1>
+      <a href="/" class="text-sm text-slate-600">Voltar ao app</a>
+    </header>
 
-      - name: Build PWA
-        run: cp -r src/* build/
+    <div id="authArea" class="mb-6">
+      <label class="block mb-2">Senha administrativa (client-side)</label>
+      <input id="adminPass" class="p-2 border rounded w-full max-w-sm" type="password" placeholder="senha (padrão: study123)"/>
+      <div class="mt-3">
+        <button id="loginBtn" class="px-3 py-2 bg-blue-600 text-white rounded">Entrar</button>
+      </div>
+      <p class="mt-2 text-sm text-slate-500">A autenticação é local e em sessão — para estudos.</p>
+    </div>
 
-      - name: List build folder
-        run: ls -R build
+    <div id="panel" style="display:none">
+      <section class="mb-4">
+        <div class="flex gap-2 mb-2">
+          <input id="filterInput" placeholder="Filtrar por texto" class="p-2 border rounded flex-1"/>
+          <button id="applyFilter" class="px-3 py-2 bg-slate-700 text-white rounded">Aplicar</button>
+          <button id="clearFilter" class="px-3 py-2 bg-gray-300 rounded">Limpar filtro</button>
+        </div>
+        <div class="flex gap-2 mb-2">
+          <button id="downloadAll" class="px-3 py-2 bg-emerald-600 text-white rounded">Exportar CSV</button>
+          <button id="downloadJson" class="px-3 py-2 bg-blue-600 text-white rounded">Export JSON</button>
+          <button id="wipeLocal" class="px-3 py-2 bg-red-600 text-white rounded">Apagar localStorage</button>
+        </div>
+      </section>
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      <section class="mb-6">
+        <h2 class="font-semibold mb-2">Contadores</h2>
+        <pre id="statsBox" class="p-3 border rounded h-28 overflow-auto bg-gray-50"></pre>
+      </section>
+
+      <section>
+        <h2 class="font-semibold mb-2">Registros (últimos 500)</h2>
+        <div id="listBox" class="p-3 border rounded h-72 overflow-auto bg-white"></div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
+HTML
+
+          ##############################################################################
+          # manifest.json
+          ##############################################################################
+          cat > dist/manifest.json <<'JSON'
+{
+  "name": "KeyMonitor Study PWA",
+  "short_name": "KM-Study",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "icons":[
+    {"src":"icons/icon-192.svg","sizes":"192x192","type":"image/svg+xml"},
+    {"src":"icons/icon-512.svg","sizes":"512x512","type":"image/svg+xml"}
+  ]
+}
+JSON
+
+          ##############################################################################
+          # sw.js (service worker)
+          ##############################################################################
+          cat > dist/sw.js <<'JS'
+const CACHE = "km-study-cache-v1";
+const FILES = ["/","/index.html","/admin.html","/app.js","/admin.js","/manifest.json","/icons/icon-192.svg","/icons/icon-512.svg"];
+self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
+self.addEventListener("activate", e => self.clients.claim());
+self.addEventListener("fetch", e => { e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))); });
+JS
+
+          ##############################################################################
+          # SVG icons
+          ##############################################################################
+          cat > dist/icons/icon-192.svg <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 24 24">
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <text x="50%" y="50%" fill="#fff" font-size="8" font-family="Arial" dominant-baseline="middle" text-anchor="middle">KM</text>
+</svg>
+SVG
+
+          cat > dist/icons/icon-512.svg <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 24 24">
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <text x="50%" y="50%" fill="#fff" font-size="16" font-family="Arial" dominant-baseline="middle" text-anchor="middle">KeyMonitor</text>
+</svg>
+SVG
+
+          ##############################################################################
+          # app.js - user-side: capture only input field values, store locally
+          ##############################################################################
+          cat > dist/app.js <<'JS'
+(() => {
+  const input = document.getElementById('inputBox');
+  const logList = document.getElementById('logList');
+  const exportJson = document.getElementById('exportJson');
+  const exportCsv = document.getElementById('exportCsv');
+  const clearBtn = document.getElementById('clear');
+
+  // logs stored as array of {text, time}
+  const key = 'km_study_logs_v1';
+  let logs = JSON.parse(localStorage.getItem(key) || '[]');
+
+  function render() {
+    logList.textContent = logs.slice(-200).map(l => '[' + new Date(l.time).toLocaleTimeString() + '] ' + l.text).join('\\n');
+  }
+
+  function add(text) {
+    logs.push({ text: String(text), time: Date.now() });
+    if (logs.length > 2000) logs = logs.slice(-2000); // cap
+    localStorage.setItem(key, JSON.stringify(logs));
+    render();
+  }
+
+  input.addEventListener('input', e => {
+    const v = e.target.value;
+    if (!v) return;
+    // record the whole field value (safe for study; no exfil)
+    add(v);
+    e.target.value = '';
+  });
+
+  exportJson.addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'km_logs.json'; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  exportCsv.addEventListener('click', () => {
+    const header = 'text,timestamp\\n';
+    const rows = logs.map(r => JSON.stringify(r.text) + ',' + r.time).join('\\n');
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'km_logs.csv'; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  clearBtn.addEventListener('click', () => {
+    if (!confirm('Apagar logs locais?')) return;
+    logs = []; localStorage.removeItem(key); render();
+  });
+
+  render();
+})();
+JS
+
+          ##############################################################################
+          # admin.js - client-side admin UI with simple session auth, filters, stats
+          ##############################################################################
+          cat > dist/admin.js <<'JS'
+(() => {
+  const AUTH_PWD = 'study123'; // default client-side password for studies
+  const PASS_KEY = 'km_admin_logged_in';
+  const key = 'km_study_logs_v1';
+
+  const authArea = document.getElementById('authArea');
+  const panel = document.getElementById('panel');
+  const loginBtn = document.getElementById('loginBtn');
+  const adminPass = document.getElementById('adminPass');
+
+  const listBox = document.getElementById('listBox');
+  const statsBox = document.getElementById('statsBox');
+  const filterInput = document.getElementById('filterInput');
+  const applyFilter = document.getElementById('applyFilter');
+  const clearFilter = document.getElementById('clearFilter');
+  const downloadAll = document.getElementById('downloadAll');
+  const downloadJson = document.getElementById('downloadJson');
+  const wipeLocal = document.getElementById('wipeLocal');
+
+  function isLogged() {
+    return sessionStorage.getItem(PASS_KEY) === '1';
+  }
+
+  function doLogin() {
+    const val = adminPass.value || '';
+    if (val === AUTH_PWD) {
+      sessionStorage.setItem(PASS_KEY, '1');
+      showPanel();
+    } else {
+      alert('Senha incorreta. (dica para estudo: study123)');
+    }
+  }
+
+  function showPanel() {
+    authArea.style.display = 'none';
+    panel.style.display = 'block';
+    renderAll();
+  }
+
+  function loadLogs() {
+    return JSON.parse(localStorage.getItem(key) || '[]').slice(-2000);
+  }
+
+  function renderAll(filter) {
+    const logs = loadLogs();
+    const filtered = filter ? logs.filter(l => JSON.stringify(l).toLowerCase().includes(filter.toLowerCase())) : logs;
+    listBox.innerHTML = filtered.slice(-500).map(l => '<div class="p-1 border-b text-sm">[' + new Date(l.time).toLocaleString() + '] ' + escapeHtml(l.text) + '</div>').join('');
+    buildStats(filtered);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function buildStats(logs) {
+    const freq = {};
+    logs.forEach(l => freq[l.text] = (freq[l.text] || 0) + 1);
+    const entries = Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0,50);
+    statsBox.textContent = entries.map(e => e[0] + ': ' + e[1]).join('\\n');
+  }
+
+  applyFilter.addEventListener('click', () => renderAll(filterInput.value));
+  clearFilter.addEventListener('click', () => { filterInput.value=''; renderAll(); });
+
+  downloadAll.addEventListener('click', () => {
+    const logs = loadLogs();
+    const csv = 'text,timestamp\\n' + logs.map(r => JSON.stringify(r.text) + ',' + r.time).join('\\n');
+    const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='km_full.csv'; a.click(); URL.revokeObjectURL(url);
+  });
+
+  downloadJson.addEventListener('click', () => {
+    const logs = loadLogs(); const blob = new Blob([JSON.stringify(logs,null,2)], {type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='km_full.json'; a.click(); URL.revokeObjectURL(url);
+  });
+
+  wipeLocal.addEventListener('click', () => {
+    if (!confirm('Apagar tudo em localStorage?')) return;
+    localStorage.removeItem(key); renderAll();
+    alert('LocalStorage limpo.');
+  });
+
+  loginBtn.addEventListener('click', doLogin);
+
+  if (isLogged()) showPanel();
+})();
+JS
+
+          ##############################################################################
+          # List dist for debug
+          ##############################################################################
+          echo "Dist content:"
+          ls -la dist
+          find dist -maxdepth 3 -type f -print
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: pwa-build
-          path: ./build
+          path: ./dist
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v3
+  deploy:
+    needs: generate-build-deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
 
+    steps:
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          folder: ./build
