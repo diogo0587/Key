@@ -114,7 +114,10 @@ jobs:
           }
           JSON
 
-      - name: Upload artifact for Pages
+      - name: List dist folder
+        run: ls -R dist
+
+      - name: Upload artifact for GitHub Pages
         uses: actions/upload-pages-artifact@v1
         with:
           path: ./dist
